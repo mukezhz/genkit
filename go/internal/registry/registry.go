@@ -13,6 +13,8 @@ import (
 	"github.com/firebase/genkit/go/core/tracing"
 	"github.com/firebase/genkit/go/internal/action"
 	"github.com/firebase/genkit/go/internal/atype"
+	"github.com/google/dotprompt/go/dotprompt"
+	"github.com/invopop/jsonschema"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"golang.org/x/exp/maps"
 )
@@ -20,10 +22,22 @@ import (
 // This file implements registries of actions and other values.
 
 type Registry struct {
-	tstate  *tracing.State
-	mu      sync.Mutex
-	frozen  bool // when true, no more additions
-	actions map[string]action.Action
+	tstate    *tracing.State
+	mu        sync.Mutex
+	frozen    bool // when true, no more additions
+	actions   map[string]action.Action
+	dotprompt *dotprompt.Dotprompt
+}
+
+// DotpromptOptions represents configuration options for the dotprompt
+type DotpromptOptions struct {
+	ModelConfigs    map[string]interface{}
+	DefaultModel    string
+	Tools           []interface{}
+	ToolResolver    interface{}
+	Schemas         map[string]interface{}
+	SchemaResolver  interface{}
+	PartialResolver interface{}
 }
 
 func New() (*Registry, error) {
@@ -34,7 +48,38 @@ func New() (*Registry, error) {
 	if os.Getenv("GENKIT_TELEMETRY_SERVER") != "" {
 		r.tstate.WriteTelemetryImmediate(tracing.NewHTTPTelemetryClient(os.Getenv("GENKIT_TELEMETRY_SERVER")))
 	}
+
+	// Create dotprompt with explicit (non-nil) options to ensure proper initialization
+	r.dotprompt = dotprompt.NewDotprompt(&dotprompt.DotpromptOptions{
+		// Empty but non-nil options
+		ModelConfigs: make(map[string]any),
+		Tools:        make(map[string]dotprompt.ToolDefinition),
+		Schemas:      make(map[string]*jsonschema.Schema),
+	})
 	return r, nil
+}
+
+// NewWithOptions initializes a new Registry instance with the provided dotprompt options.
+// It sets up the Dotprompt instance with Partials and Helpers if specified.
+// Returns an error if the Registry creation fails.
+func NewWithOptions(options *dotprompt.DotpromptOptions) (*Registry, error) {
+	r := &Registry{
+		actions: map[string]action.Action{},
+	}
+	r.tstate = tracing.NewState()
+	if os.Getenv("GENKIT_TELEMETRY_SERVER") != "" {
+		r.tstate.WriteTelemetryImmediate(tracing.NewHTTPTelemetryClient(os.Getenv("GENKIT_TELEMETRY_SERVER")))
+	}
+
+	r.dotprompt = dotprompt.NewDotprompt(options)
+
+	return r, nil
+}
+
+func (r *Registry) DotPrompt() *dotprompt.Dotprompt {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.dotprompt
 }
 
 func (r *Registry) TracingState() *tracing.State { return r.tstate }

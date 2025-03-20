@@ -426,3 +426,40 @@ func renderDotprompt(templateText string, variables map[string]any, defaultInput
 	}
 	return str, nil
 }
+
+// DefinePartial registers a partial template that can be reused in other templates.
+// Partials can be referenced in templates with the syntax {{>partialName}}.
+func DefinePartial(r *registry.Registry, name string, source string) {
+	dp := r.DotPrompt()
+	if dp == nil {
+		return
+	}
+	// Create a temporary template to register the partial
+	tpl, _ := raymond.Parse("")
+
+	// Register the partial using the public method
+	// This avoids directly accessing the private knownPartials field
+	dp.DefinePartial(name, source, tpl)
+}
+
+// DefineHelper registers a custom function that can be used in templates.
+// The function can be any Go function that returns a value and optionally an error.
+// It will be accessible in templates with the syntax {{helperName arg1 arg2...}}.
+func DefineHelper(r *registry.Registry, name string, fn interface{}) {
+	// Validate that fn is actually a function
+	fnType := reflect.TypeOf(fn)
+	if fnType.Kind() != reflect.Func {
+		return
+	}
+
+	// Get the dotprompt instance
+	dp := r.DotPrompt()
+	if dp == nil {
+		return
+	}
+
+	// Use RegisterHelpers
+	// This will at least register the helper in the options
+	tpl, _ := raymond.Parse("")
+	dp.DefineHelper(name, fn, tpl)
+}
